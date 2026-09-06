@@ -204,7 +204,10 @@ async function run(argv: string[]): Promise<number> {
         const shown = flags.all ? threads : threads.filter((t) => !t.resolved);
         console.log(`${threads.length} thread(s), ${threads.filter((t) => !t.resolved).length} open` + (flags.all ? "" : " (showing open; --all for resolved too)"));
         for (const t of shown) {
-          console.log(`\n[${t.resolved ? "resolved" : "open"}] thread ${t.threadId}`);
+          const where = t.location
+            ? `${t.location.path}:${t.location.line}:${t.location.column} on "${t.location.quote.slice(0, 60)}"`
+            : "(location unknown)";
+          console.log(`\n[${t.resolved ? "resolved" : "open"}] ${where}`);
           for (const m of t.messages) {
             console.log(`  ${m.author} (${m.timestamp}): ${m.content}`);
           }

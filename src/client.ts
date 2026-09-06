@@ -77,10 +77,26 @@ export class OverleafClient {
     return created;
   }
 
-  /** List every comment thread in a project (review-panel comments). Read-only. */
+  /**
+   * List every comment thread in a project (review-panel comments) with WHO
+   * wrote each message, WHAT it says, and WHERE it sits (doc + line + quoted
+   * span). Read-only. Location is best-effort: it opens the project's docs to
+   * read their comment ranges; if that fails the threads still come back without
+   * a `location`.
+   */
   async listComments(project: string): Promise<CommentThread[]> {
     const [id] = await this.resolveGuard.runExclusive(() => this.resolveProject(project));
-    return restListCommentThreads(this.config, this.sessions, id);
+    const threads = await restListCommentThreads(this.config, this.sessions, id);
+    try {
+      const locations = await (await this.project(project)).commentLocations();
+      for (const t of threads) {
+        const loc = locations.get(t.threadId);
+        if (loc) t.location = loc;
+      }
+    } catch {
+      // location is a best-effort enrichment; who/what always returns
+    }
+    return threads;
   }
 
   // -- project access ---------------------------------------------------

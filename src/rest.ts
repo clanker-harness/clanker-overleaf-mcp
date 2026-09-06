@@ -99,11 +99,23 @@ export interface CommentMessage {
   timestamp: string;
 }
 
+export interface CommentLocation {
+  /** Document path the comment is anchored in, e.g. "sections/intro.tex". */
+  path: string;
+  /** 0-based line and column of the start of the commented range. */
+  line: number;
+  column: number;
+  /** The text the comment is attached to (the highlighted span). */
+  quote: string;
+}
+
 export interface CommentThread {
   threadId: string;
   resolved: boolean;
   resolvedBy?: string;
   resolvedAt?: string;
+  /** WHERE the comment sits — resolved from the doc's comment ranges. */
+  location?: CommentLocation;
   messages: CommentMessage[];
 }
 

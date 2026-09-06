@@ -154,6 +154,31 @@ export class ProjectSession {
     return out;
   }
 
+  /**
+   * Map each comment thread id to WHERE it sits: the document, line/column, and
+   * the quoted span. Opens every doc (joinDoc populates its comment ranges).
+   * Best-effort — a doc that won't open is skipped.
+   */
+  async commentLocations(): Promise<
+    Map<string, { path: string; line: number; column: number; quote: string }>
+  > {
+    const map = new Map<string, { path: string; line: number; column: number; quote: string }>();
+    for (const e of this.listDocuments(false)) {
+      let doc: Document;
+      try {
+        doc = await this.openDoc(e.path);
+      } catch {
+        continue;
+      }
+      for (const cr of doc.commentRanges) {
+        if (map.has(cr.threadId)) continue;
+        const [line, column] = doc.offsetToRowcol(cr.position);
+        map.set(cr.threadId, { path: e.path, line, column, quote: cr.quote });
+      }
+    }
+    return map;
+  }
+
   // -- editing ----------------------------------------------------------
   async insertAt(path: string, offset: number, text: string): Promise<Document> {
     const doc = await this.openDoc(path);
@@ -495,6 +520,17 @@ export class ProjectSession {
       const lines = (result[1] as string[]).map(ot.decodeWireText);
       doc.loadFromLines(lines, result[2] as number);
       doc.joinGeneration = this.rt.generation;
+      // result[4] = ranges { comments: [{ id, op: { p, c, t? } }], changes } from
+      // encodeRanges. Capture comment ranges so we can report WHERE each comment
+      // sits (position + quoted text); the thread id links to /threads messages.
+      doc.commentRanges = [];
+      const ranges = result[4] as { comments?: Array<{ id?: string; op?: { p?: number; c?: string; t?: string } }> } | undefined;
+      for (const cm of ranges?.comments ?? []) {
+        const op = cm.op ?? {};
+        const threadId = op.t ?? cm.id;
+        if (threadId === undefined || typeof op.p !== "number") continue;
+        doc.commentRanges.push({ threadId, position: op.p, quote: ot.decodeWireText(op.c ?? "") });
+      }
       return;
     }
     throw lastError ?? new ClaudeleafError(`joinDoc failed for ${doc.path}`);

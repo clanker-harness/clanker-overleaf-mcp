@@ -13,6 +13,13 @@ export class Document {
   loaded = false;
   /** Realtime connection generation this doc was last joined on (-1 = never). */
   joinGeneration = -1;
+  /**
+   * Comment ranges from the last joinDoc (encodeRanges). Each entry ties a
+   * comment thread to WHERE it sits in this doc: the char position and the
+   * quoted text the comment is attached to. Line/column are resolved lazily
+   * against the current text.
+   */
+  commentRanges: Array<{ threadId: string; position: number; quote: string }> = [];
 
   constructor(
     readonly id: string,
