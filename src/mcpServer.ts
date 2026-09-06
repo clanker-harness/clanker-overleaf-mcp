@@ -42,6 +42,16 @@ export function createServer(): McpServer {
   );
 
   server.registerTool(
+    "overleaf_create_project",
+    {
+      description: "Create a NEW blank Overleaf project (top-level, not a document). Returns its id and name.",
+      inputSchema: { name: z.string() },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    async ({ name }) => result(await getClient().createProject(name)),
+  );
+
+  server.registerTool(
     "overleaf_project_info",
     {
       description: "Get metadata about a project (name, owner, members, compiler). `project` is an id or name.",

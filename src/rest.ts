@@ -51,6 +51,47 @@ export async function listProjects(
   }));
 }
 
+/**
+ * Create a brand-new blank project (the dashboard "New Project → Blank Project"
+ * flow: POST /project/new with the CSRF token). Returns the new project's id/name.
+ * clanker addition on top of upstream claudeleaf, which only creates docs/folders
+ * inside existing projects.
+ */
+export async function createProject(
+  config: Config,
+  sessions: SessionManager,
+  name: string,
+): Promise<{ id: string; name: string }> {
+  const ch = cookieHeader(await sessions.ensureValid());
+  const timeout = () => AbortSignal.timeout(config.requestTimeout * 1000);
+  const dash = await fetch(`${config.baseUrl}/project`, {
+    headers: { Cookie: ch, "User-Agent": config.userAgent },
+    signal: timeout(),
+  });
+  const m = CSRF_RE.exec(await dash.text());
+  if (!m) throw new ClaudeleafError("could not load the project dashboard (session may be invalid)");
+  const res = await fetch(`${config.baseUrl}/project/new`, {
+    method: "POST",
+    headers: {
+      Cookie: ch,
+      "User-Agent": config.userAgent,
+      "X-CSRF-Token": m[1],
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Referer: `${config.baseUrl}/project`,
+    },
+    body: JSON.stringify({ projectName: name, template: "none" }),
+    signal: timeout(),
+  });
+  if (res.status !== 200) {
+    throw new ClaudeleafError(`creating project failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
+  }
+  const data = (await res.json()) as { project_id?: string; projectId?: string };
+  const id = data.project_id ?? data.projectId;
+  if (!id) throw new ClaudeleafError("create project: no project_id in Overleaf response");
+  return { id, name };
+}
+
 interface RawProject {
   id: string;
   name: string;

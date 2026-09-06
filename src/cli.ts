@@ -60,6 +60,7 @@ Usage: clanker-overleaf <command> [args]
   login                                   sign in via browser, cache the session
   doctor                                  check the session, list projects
   projects                                list all accessible projects
+  new <name>                              create a new blank project
   info <project>                          project metadata
   ls <project> [--all]                    list documents (--all includes files)
   cat <project> <path>                    print a document
@@ -111,6 +112,19 @@ async function run(argv: string[]): Promise<number> {
     console.log(`Projects:  ${projects.length}`);
     for (const p of projects) console.log(`  ${p.id}  ${p.name}  (${p.accessLevel})`);
     console.log("All good.");
+    return 0;
+  }
+
+  if (command === "new") {
+    const name = positionals[0];
+    if (!name) {
+      console.error("error: 'new' needs a project name");
+      return 1;
+    }
+    const client = new OverleafClient(Config.fromEnv());
+    const created = await client.createProject(name);
+    console.log(`Created project ${created.id}  ${created.name}`);
+    console.log(`${Config.fromEnv().baseUrl}/project/${created.id}`);
     return 0;
   }
 

@@ -16,7 +16,7 @@ import { SessionManager } from "./auth.js";
 import { Config, parseProjectId } from "./config.js";
 import type { Document } from "./document.js";
 import { ProjectNotFoundError } from "./errors.js";
-import { listProjects as restListProjects } from "./rest.js";
+import { listProjects as restListProjects, createProject as restCreateProject } from "./rest.js";
 import { ProjectSession } from "./session.js";
 import type {
   CompileOptions,
@@ -63,6 +63,13 @@ export class OverleafClient {
       this.projectList = await restListProjects(this.config, this.sessions);
     }
     return this.projectList;
+  }
+
+  /** Create a new blank project and return its id/name. Invalidates the cached list. */
+  async createProject(name: string): Promise<{ id: string; name: string }> {
+    const created = await restCreateProject(this.config, this.sessions, name);
+    this.projectList = null; // list is now stale
+    return created;
   }
 
   // -- project access ---------------------------------------------------
