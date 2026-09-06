@@ -4,11 +4,23 @@
  * `ol-csrfToken` scraped from a page. Transient 5xx responses are retried.
  */
 
+import { appendFileSync } from "node:fs";
+
 import type { Config } from "./config.js";
 import { cookieHeader, type SessionManager } from "./auth.js";
 import { ClaudeleafError } from "./errors.js";
 import type { ProjectSummary } from "./types.js";
 import { sleep } from "./util.js";
+
+/** Diagnostic timeline (only when CLANKER_TIMING is set) — see mcpServer.tlog. */
+function tlog(message: string): void {
+  if (process.env.CLANKER_TIMING === undefined) return;
+  try {
+    appendFileSync("/tmp/overleaf-mcp-timing.log", `${new Date().toISOString()} ${message}\n`);
+  } catch {
+    /* best-effort */
+  }
+}
 
 const CSRF_RE = /name="ol-csrfToken"\s+content="([^"]+)"/;
 type EntityType = "doc" | "file" | "folder";
@@ -18,13 +30,16 @@ export async function listProjects(
   config: Config,
   sessions: SessionManager,
 ): Promise<ProjectSummary[]> {
+  const t0 = Date.now();
   const ch = cookieHeader(await sessions.ensureValid());
+  tlog(`listProjects: ensureValid done (+${Date.now() - t0}ms)`);
   const timeout = () => AbortSignal.timeout(config.requestTimeout * 1000);
   const dash = await fetch(`${config.baseUrl}/project`, {
     headers: { Cookie: ch, "User-Agent": config.userAgent },
     signal: timeout(),
   });
   const m = CSRF_RE.exec(await dash.text());
+  tlog(`listProjects: dashboard+csrf fetched (+${Date.now() - t0}ms)`);
   if (!m) throw new ClaudeleafError("could not load the project dashboard (session may be invalid)");
   const res = await fetch(`${config.baseUrl}/api/project`, {
     method: "POST",
@@ -38,6 +53,7 @@ export async function listProjects(
     body: "{}",
     signal: timeout(),
   });
+  tlog(`listProjects: /api/project done (+${Date.now() - t0}ms)`);
   if (res.status !== 200) throw new ClaudeleafError(`listing projects failed (${res.status})`);
   const data = (await res.json()) as { projects?: RawProject[] };
   return (data.projects ?? []).map((p) => ({

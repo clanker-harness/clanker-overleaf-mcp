@@ -9,6 +9,7 @@
  * Positions: `line`/`column` are 0-based; `offset`/`start`/`end` are character offsets.
  */
 
+import { appendFileSync } from "node:fs";
 import fs from "node:fs/promises";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -21,13 +22,31 @@ import { mimeFromPath } from "./util.js";
 
 let client: OverleafClient | null = null;
 
+/** Diagnostic timeline (only when CLANKER_TIMING is set): where a tool call's
+ * time goes, since the MCP's stderr isn't visible from the host. */
+function tlog(message: string): void {
+  if (process.env.CLANKER_TIMING === undefined) return;
+  try {
+    appendFileSync("/tmp/overleaf-mcp-timing.log", `${new Date().toISOString()} ${message}\n`);
+  } catch {
+    /* best-effort */
+  }
+}
+
 function getClient(): OverleafClient {
-  if (!client) client = new OverleafClient(Config.fromEnv());
+  if (!client) {
+    const t = Date.now();
+    client = new OverleafClient(Config.fromEnv());
+    tlog(`getClient: constructed in ${Date.now() - t}ms`);
+  }
   return client;
 }
 
 function result(value: unknown) {
-  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  // Compact JSON on purpose: results go straight into the model's context, and
+  // pretty-printing a 148-project list roughly doubled its token cost (and the
+  // model's read time) for zero information gain.
+  const text = typeof value === "string" ? value : JSON.stringify(value);
   return { content: [{ type: "text" as const, text }] };
 }
 
@@ -37,11 +56,21 @@ export function createServer(): McpServer {
   server.registerTool(
     "overleaf_list_projects",
     {
-      description: "List every Overleaf project the signed-in account can access (id, name, access).",
-      inputSchema: {},
+      description:
+        "List every Overleaf project the signed-in account can access. Compact by default — {count, projects:[{id, name, access}]} — because the full list can be 100+ projects and lands in the model's context. Set includeDetails=true for lastUpdated/owner/archived/trashed too.",
+      inputSchema: { includeDetails: z.boolean().optional() },
       annotations: { readOnlyHint: true },
     },
-    async () => result(await getClient().listProjects()),
+    async ({ includeDetails }) => {
+      const t = Date.now();
+      tlog("list_projects: start");
+      const projects = await getClient().listProjects();
+      tlog(`list_projects: done in ${Date.now() - t}ms (${projects.length} projects)`);
+      const rows = includeDetails
+        ? projects
+        : projects.map((p) => ({ id: p.id, name: p.name, access: p.accessLevel }));
+      return result({ count: projects.length, projects: rows });
+    },
   );
 
   server.registerTool(
