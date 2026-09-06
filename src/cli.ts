@@ -69,6 +69,7 @@ Usage: clanker-overleaf <command> [args]
   replace <project> <path> <old> <new> [--count N]
   set <project> <path>                    replace whole document with stdin
   search <project> <path> <query>         find text
+  comments <project> [--all]              list review-panel comments (open only unless --all)
   compile <project> [--draft] [--stop-on-first-error] [--log] [--warnings]
   mcp                                     run the MCP server over stdio
 
@@ -195,6 +196,18 @@ async function run(argv: string[]): Promise<number> {
       case "search": {
         for (const hit of await client.search(project, positionals[1], positionals[2])) {
           console.log(`line ${hit.line}, col ${hit.column} (offset ${hit.offset})`);
+        }
+        return 0;
+      }
+      case "comments": {
+        const threads = await client.listComments(project);
+        const shown = flags.all ? threads : threads.filter((t) => !t.resolved);
+        console.log(`${threads.length} thread(s), ${threads.filter((t) => !t.resolved).length} open` + (flags.all ? "" : " (showing open; --all for resolved too)"));
+        for (const t of shown) {
+          console.log(`\n[${t.resolved ? "resolved" : "open"}] thread ${t.threadId}`);
+          for (const m of t.messages) {
+            console.log(`  ${m.author} (${m.timestamp}): ${m.content}`);
+          }
         }
         return 0;
       }

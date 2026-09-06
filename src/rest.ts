@@ -92,6 +92,84 @@ export async function createProject(
   return { id, name };
 }
 
+export interface CommentMessage {
+  author: string;
+  email?: string;
+  content: string;
+  timestamp: string;
+}
+
+export interface CommentThread {
+  threadId: string;
+  resolved: boolean;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  messages: CommentMessage[];
+}
+
+interface RawUser {
+  id?: string;
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+}
+interface RawMessage {
+  id?: string;
+  content?: string;
+  timestamp?: number;
+  user_id?: string;
+  user?: RawUser;
+}
+interface RawThread {
+  messages?: RawMessage[];
+  resolved?: boolean;
+  resolved_at?: number;
+  resolved_by_user?: RawUser;
+}
+
+function userName(u: RawUser | undefined): string {
+  if (!u) return "";
+  return [u.first_name, u.last_name].filter(Boolean).join(" ").trim();
+}
+
+/**
+ * List every comment thread in a project — the review-panel comments, each with
+ * author, text, timestamp and resolved state. Read-only (GET, cookie only, no
+ * CSRF). clanker addition on top of upstream claudeleaf. NOTE: Overleaf's
+ * /threads endpoint returns the thread messages but not the commented location
+ * in the document (that lives in the doc's comment ranges).
+ */
+export async function listCommentThreads(
+  config: Config,
+  sessions: SessionManager,
+  projectId: string,
+): Promise<CommentThread[]> {
+  const ch = cookieHeader(await sessions.ensureValid());
+  const res = await fetch(`${config.baseUrl}/project/${projectId}/threads`, {
+    headers: { Cookie: ch, "User-Agent": config.userAgent, Accept: "application/json" },
+    signal: AbortSignal.timeout(config.requestTimeout * 1000),
+  });
+  if (res.status !== 200) throw new ClaudeleafError(`fetching comments failed (${res.status})`);
+  const data = (await res.json()) as Record<string, RawThread>;
+  const iso = (ms?: number): string => (typeof ms === "number" ? new Date(ms).toISOString() : "");
+  const out: CommentThread[] = [];
+  for (const [threadId, t] of Object.entries(data)) {
+    out.push({
+      threadId,
+      resolved: Boolean(t.resolved),
+      ...(t.resolved_by_user ? { resolvedBy: userName(t.resolved_by_user) } : {}),
+      ...(t.resolved_at ? { resolvedAt: iso(t.resolved_at) } : {}),
+      messages: (t.messages ?? []).map((m) => ({
+        author: userName(m.user) || m.user_id || "unknown",
+        ...(m.user?.email ? { email: m.user.email } : {}),
+        content: m.content ?? "",
+        timestamp: iso(m.timestamp),
+      })),
+    });
+  }
+  return out;
+}
+
 interface RawProject {
   id: string;
   name: string;

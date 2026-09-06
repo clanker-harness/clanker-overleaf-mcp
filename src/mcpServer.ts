@@ -83,6 +83,25 @@ export function createServer(): McpServer {
   );
 
   server.registerTool(
+    "overleaf_list_comments",
+    {
+      description:
+        "List the review-panel comment threads in a project — each comment's author, text, timestamp, and whether it's resolved. Read-only. By default returns only OPEN (unresolved) threads; set includeResolved=true for all.",
+      inputSchema: { project: z.string(), includeResolved: z.boolean().optional() },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ project, includeResolved }) => {
+      const threads = await getClient().listComments(project);
+      const open = threads.filter((t) => !t.resolved);
+      return result({
+        total: threads.length,
+        open: open.length,
+        threads: includeResolved ? threads : open,
+      });
+    },
+  );
+
+  server.registerTool(
     "overleaf_search",
     {
       description: "Find every occurrence of a literal string in a document. Returns offset/line/column.",

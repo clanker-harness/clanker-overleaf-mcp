@@ -16,7 +16,12 @@ import { SessionManager } from "./auth.js";
 import { Config, parseProjectId } from "./config.js";
 import type { Document } from "./document.js";
 import { ProjectNotFoundError } from "./errors.js";
-import { listProjects as restListProjects, createProject as restCreateProject } from "./rest.js";
+import {
+  listProjects as restListProjects,
+  createProject as restCreateProject,
+  listCommentThreads as restListCommentThreads,
+  type CommentThread,
+} from "./rest.js";
 import { ProjectSession } from "./session.js";
 import type {
   CompileOptions,
@@ -70,6 +75,12 @@ export class OverleafClient {
     const created = await restCreateProject(this.config, this.sessions, name);
     this.projectList = null; // list is now stale
     return created;
+  }
+
+  /** List every comment thread in a project (review-panel comments). Read-only. */
+  async listComments(project: string): Promise<CommentThread[]> {
+    const [id] = await this.resolveGuard.runExclusive(() => this.resolveProject(project));
+    return restListCommentThreads(this.config, this.sessions, id);
   }
 
   // -- project access ---------------------------------------------------
