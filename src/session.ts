@@ -65,6 +65,8 @@ export class ProjectSession {
   private project: Record<string, any> = {};
   private entities: Entity[] = [];
   private rootFolderId: string | null = null;
+  /** Last compile that produced a PDF — reused when a fresh compile is rate-limited. */
+  private lastGoodCompile: CompileResult | null = null;
 
   private readonly docs = new Map<string, Document>();
   private readonly mutexes = new Map<string, Mutex>();
@@ -321,6 +323,46 @@ export class ProjectSession {
     return this.rest.createFolder(name, this.folderId(folder));
   }
 
+  /**
+   * Upload binary bytes as a file (image, PDF, .bib, …) at `remotePath`
+   * (e.g. "figures/plot.png"). The parent folder must already exist. Mirrors the
+   * dashboard's drag-and-drop upload; the new file becomes referenceable, e.g.
+   * `\includegraphics{figures/plot.png}`.
+   */
+  async uploadFile(remotePath: string, bytes: Uint8Array, mime: string): Promise<{ path: string; id?: string }> {
+    const ref = remotePath.trim().replace(/^\/+/, "");
+    const slash = ref.lastIndexOf("/");
+    const folder = slash === -1 ? "" : ref.slice(0, slash);
+    const filename = slash === -1 ? ref : ref.slice(slash + 1);
+    const fid = this.folderId(folder || undefined);
+    const res = await this.rest.uploadFile(fid, filename, bytes, mime);
+    // Reflect the new file in the local tree (replace a same-named entry).
+    this.entities = this.entities.filter((e) => e.path !== ref);
+    this.entities.push({ id: res.entity_id ?? "", name: filename, path: ref, type: "file", folderId: fid });
+    return { path: ref, id: res.entity_id };
+  }
+
+  /**
+   * Compile and return the produced PDF as raw bytes. If a fresh compile is
+   * rate-limited (`too-recently-compiled`) we fall back to the last build that
+   * produced a PDF, else wait and retry once — so download works even right
+   * after another compile.
+   */
+  async downloadPdf(opts: CompileOptions = {}): Promise<{ bytes: Uint8Array; compile: CompileResult }> {
+    let compile = await this.compile(opts);
+    if (!compile.pdfUrl && this.lastGoodCompile?.pdfUrl) {
+      compile = this.lastGoodCompile; // reuse the most recent successful build
+    }
+    if (!compile.pdfUrl && compile.status === "too-recently-compiled") {
+      await sleep(4000);
+      compile = await this.compile(opts);
+    }
+    if (!compile.pdfUrl) {
+      throw new ClaudeleafError(`no PDF was produced (compile status: ${compile.status})`);
+    }
+    return { bytes: await this.rest.fetchBinaryUrl(compile.pdfUrl), compile };
+  }
+
   async deleteDocument(path: string): Promise<void> {
     const entity = this.resolve(path);
     await this.rest.deleteEntity(entity.id, entity.type);
@@ -374,7 +416,7 @@ export class ProjectSession {
     }
 
     const entries = parseLatexLog(log);
-    return {
+    const compiled: CompileResult = {
       status: raw.status,
       success: raw.status === "success",
       errors: entries.filter((e) => e.level === "error"),
@@ -383,6 +425,8 @@ export class ProjectSession {
       outputFiles,
       pdfUrl: outputFiles.find((f) => f.path === "output.pdf")?.url,
     };
+    if (compiled.pdfUrl) this.lastGoodCompile = compiled;
+    return compiled;
   }
 
   // -- internals: tree --------------------------------------------------

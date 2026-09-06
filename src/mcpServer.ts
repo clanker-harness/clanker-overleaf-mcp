@@ -9,12 +9,15 @@
  * Positions: `line`/`column` are 0-based; `offset`/`start`/`end` are character offsets.
  */
 
+import fs from "node:fs/promises";
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
 import { OverleafClient } from "./client.js";
 import { Config } from "./config.js";
+import { mimeFromPath } from "./util.js";
 
 let client: OverleafClient | null = null;
 
@@ -39,6 +42,43 @@ export function createServer(): McpServer {
       annotations: { readOnlyHint: true },
     },
     async () => result(await getClient().listProjects()),
+  );
+
+  server.registerTool(
+    "overleaf_upload_file",
+    {
+      description:
+        "Upload a LOCAL file (image, PDF, .bib, …) into a project at remotePath (e.g. 'figures/plot.png'). Reads localPath off disk. The parent folder must already exist (use overleaf_create_document's folder or create it first). After upload you can reference it, e.g. \\includegraphics{figures/plot.png}.",
+      inputSchema: { project: z.string(), localPath: z.string(), remotePath: z.string() },
+      annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    async ({ project, localPath, remotePath }) => {
+      const bytes = new Uint8Array(await fs.readFile(localPath));
+      const res = await getClient().uploadFile(project, remotePath, bytes, mimeFromPath(remotePath));
+      return result({ ok: true, path: res.path, id: res.id, bytes: bytes.length });
+    },
+  );
+
+  server.registerTool(
+    "overleaf_download_pdf",
+    {
+      description:
+        "Compile the project and save the produced PDF to a LOCAL path (destPath). Returns the compile status, error/warning counts, and where it saved. Use overleaf_compile if you only want the error log.",
+      inputSchema: { project: z.string(), destPath: z.string(), draft: z.boolean().optional() },
+      annotations: { readOnlyHint: true },
+    },
+    async ({ project, destPath, draft }) => {
+      const { bytes, compile } = await getClient().downloadPdf(project, { draft: draft ?? false });
+      await fs.writeFile(destPath, bytes);
+      return result({
+        ok: true,
+        savedTo: destPath,
+        bytes: bytes.length,
+        status: compile.status,
+        errors: compile.errors.length,
+        warnings: compile.warnings.length,
+      });
+    },
   );
 
   server.registerTool(

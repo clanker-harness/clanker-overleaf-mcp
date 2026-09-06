@@ -329,6 +329,66 @@ export class RestClient {
     if (!res.ok) throw new ClaudeleafError(`fetching ${path} failed (${res.status})`);
     return res.text();
   }
+
+  /** GET an ABSOLUTE url (e.g. a compiled output.pdf) as raw bytes. */
+  async fetchBinaryUrl(url: string): Promise<Uint8Array> {
+    const ch = await this.cookieHdr(false);
+    const res = await fetch(url, {
+      headers: {
+        Cookie: ch,
+        "User-Agent": this.config.userAgent,
+        Referer: this.config.projectUrl(this.projectId),
+      },
+      signal: AbortSignal.timeout(this.config.compileTimeout * 1000),
+    });
+    if (!res.ok) throw new ClaudeleafError(`downloading ${url} failed (${res.status})`);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  /**
+   * Upload a binary file (image, PDF, .bib, …) into a folder, exactly like the
+   * dashboard's drag-and-drop. Multipart POST to /project/:id/upload with the
+   * CSRF token; retries once on a stale token. Returns the new entity id/type.
+   */
+  async uploadFile(
+    folderId: string,
+    filename: string,
+    bytes: Uint8Array,
+    mime: string,
+  ): Promise<{ entity_id?: string; entity_type?: string; success?: boolean }> {
+    const url = `${this.config.baseUrl}/project/${this.projectId}/upload?folder_id=${encodeURIComponent(folderId)}`;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const refresh = attempt > 0;
+      const ch = await this.cookieHdr(refresh);
+      const csrf = await this.ensureCsrf(refresh);
+      const form = new FormData();
+      form.append("relativePath", "null");
+      form.append("name", filename);
+      form.append("type", mime);
+      form.append("qqfile", new Blob([bytes], { type: mime }), filename);
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Cookie: ch,
+          "User-Agent": this.config.userAgent,
+          Referer: this.config.projectUrl(this.projectId),
+          "X-CSRF-Token": csrf,
+          Accept: "application/json",
+        },
+        body: form,
+        signal: AbortSignal.timeout(this.config.compileTimeout * 1000),
+      });
+      if ((res.status === 401 || res.status === 403) && attempt === 0) {
+        this.csrf = null;
+        continue;
+      }
+      if (res.status !== 200) {
+        throw new ClaudeleafError(`upload failed (${res.status}): ${(await res.text()).slice(0, 200)}`);
+      }
+      return (await res.json()) as { entity_id?: string; entity_type?: string; success?: boolean };
+    }
+    throw new ClaudeleafError("upload failed (csrf)");
+  }
 }
 
 interface RawOutputFile {

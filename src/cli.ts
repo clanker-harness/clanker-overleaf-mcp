@@ -6,11 +6,13 @@
  * by id or name. Commands take only operation arguments.
  */
 
+import fs from "node:fs/promises";
 import process from "node:process";
 
 import { OverleafClient } from "./client.js";
 import { Config } from "./config.js";
 import { ClaudeleafError } from "./errors.js";
+import { mimeFromPath } from "./util.js";
 
 const VALUE_FLAGS = new Set(["count"]);
 
@@ -70,6 +72,8 @@ Usage: clanker-overleaf <command> [args]
   set <project> <path>                    replace whole document with stdin
   search <project> <path> <query>         find text
   comments <project> [--all]              list review-panel comments (open only unless --all)
+  upload <project> <localfile> [remote]   upload a local image/PDF/.bib into the project
+  download-pdf <project> <dest.pdf>       compile and save the produced PDF locally
   compile <project> [--draft] [--stop-on-first-error] [--log] [--warnings]
   mcp                                     run the MCP server over stdio
 
@@ -198,6 +202,29 @@ async function run(argv: string[]): Promise<number> {
           console.log(`line ${hit.line}, col ${hit.column} (offset ${hit.offset})`);
         }
         return 0;
+      }
+      case "upload": {
+        const local = positionals[1];
+        const remote = positionals[2] || (local ? local.split("/").pop()! : "");
+        if (!local) {
+          console.error("error: 'upload' needs <localfile> [remotepath]");
+          return 1;
+        }
+        const bytes = new Uint8Array(await fs.readFile(local));
+        const res = await client.uploadFile(project, remote, bytes, mimeFromPath(remote));
+        console.log(`Uploaded ${bytes.length} bytes -> ${res.path}${res.id ? " (" + res.id + ")" : ""}`);
+        return 0;
+      }
+      case "download-pdf": {
+        const dest = positionals[1];
+        if (!dest) {
+          console.error("error: 'download-pdf' needs <dest.pdf>");
+          return 1;
+        }
+        const { bytes, compile } = await client.downloadPdf(project, { draft: Boolean(flags.draft) });
+        await fs.writeFile(dest, bytes);
+        console.log(`Saved ${bytes.length} bytes to ${dest} (status: ${compile.status}, errors: ${compile.errors.length}, warnings: ${compile.warnings.length})`);
+        return compile.errors.length === 0 ? 0 : 2;
       }
       case "comments": {
         const threads = await client.listComments(project);

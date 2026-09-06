@@ -1,5 +1,18 @@
 /** Small async utilities (Node is event-driven, so these replace Python's threads/locks). */
 
+const MIME: Record<string, string> = {
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+  webp: "image/webp", svg: "image/svg+xml", pdf: "application/pdf",
+  bib: "application/x-bibtex", eps: "application/postscript", tex: "text/x-tex",
+  csv: "text/csv", txt: "text/plain", json: "application/json",
+};
+
+/** Best-effort MIME type from a filename's extension. */
+export function mimeFromPath(path: string): string {
+  const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+  return MIME[ext] ?? "application/octet-stream";
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

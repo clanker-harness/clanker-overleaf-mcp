@@ -268,4 +268,22 @@ export class OverleafClient {
   async compile(project: string, opts?: CompileOptions): Promise<CompileResult> {
     return (await this.project(project)).compile(opts);
   }
+
+  /** Upload binary bytes as a file (image/PDF/.bib/…) at `remotePath` in a project. */
+  async uploadFile(
+    project: string,
+    remotePath: string,
+    bytes: Uint8Array,
+    mime: string,
+  ): Promise<{ path: string; id?: string }> {
+    return (await this.project(project)).uploadFile(remotePath, bytes, mime);
+  }
+
+  /** Compile a project and return the produced PDF bytes plus the compile result. */
+  async downloadPdf(
+    project: string,
+    opts?: CompileOptions,
+  ): Promise<{ bytes: Uint8Array; compile: CompileResult }> {
+    return (await this.project(project)).downloadPdf(opts);
+  }
 }
