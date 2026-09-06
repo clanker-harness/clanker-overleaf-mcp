@@ -323,7 +323,7 @@ export class ProjectSession {
       // A 200 with a non-JSON body (e.g. a login page after a session-expiry redirect)
       // would otherwise look like a benign empty failure.
       throw new ClaudeleafError(
-        "unexpected compile response (the session may have expired — run `claudeleaf login`)",
+        "unexpected compile response (the session may have expired — run `clanker-overleaf login`)",
       );
     }
     const clsi = raw.clsiServerId ?? "";

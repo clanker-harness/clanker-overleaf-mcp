@@ -2,7 +2,7 @@
 /**
  * Claudeleaf command-line interface.
  *
- * No configuration is required: run `claudeleaf login` once, then operate on any project
+ * No configuration is required: run `clanker-overleaf login` once, then operate on any project
  * by id or name. Commands take only operation arguments.
  */
 
@@ -103,7 +103,7 @@ async function run(argv: string[]): Promise<number> {
     console.log(`Base URL: ${config.baseUrl}`);
     console.log(`Session:  ${config.sessionPath}`);
     if (!(await client.isLoggedIn())) {
-      console.log("Not signed in. Run `claudeleaf login`.");
+      console.log("Not signed in. Run `clanker-overleaf login`.");
       return 1;
     }
     console.log("Signed in: yes");

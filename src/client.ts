@@ -9,7 +9,7 @@
  *     for (const p of await client.listProjects()) console.log(p.id, p.name);
  *     await client.append("My Paper", "main.tex", "\\section{New}\n");
  *
- * Run `claudeleaf login` once to sign in; the session is cached and reused.
+ * Run `clanker-overleaf login` once to sign in; the session is cached and reused.
  */
 
 import { SessionManager } from "./auth.js";

@@ -6,7 +6,7 @@
  *     for (const p of await client.listProjects()) console.log(p.id, p.name);
  *     await client.append("My Paper", "main.tex", "% added by an agent\n");
  *
- * Run `claudeleaf login` once to sign in (a browser opens for manual login).
+ * Run `clanker-overleaf login` once to sign in (a browser opens for manual login).
  */
 
 export { OverleafClient } from "./client.js";

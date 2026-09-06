@@ -3,7 +3,7 @@
  *
  * A thin wrapper over {@link OverleafClient}. One account-scoped client is shared across
  * calls; every project/document tool takes a `project` (id or name), so one server works
- * across all of the account's projects. Sign in first with `claudeleaf login` - the tools
+ * across all of the account's projects. Sign in first with `clanker-overleaf login` - the tools
  * reuse that cached session (they will not pop a browser).
  *
  * Positions: `line`/`column` are 0-based; `offset`/`start`/`end` are character offsets.

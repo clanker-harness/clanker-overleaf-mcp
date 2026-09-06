@@ -190,7 +190,7 @@ export class SessionManager {
       return cached;
     }
     throw new AuthError(
-      "No Overleaf session found. Run `claudeleaf login` to sign in (a browser opens).",
+      "No Overleaf session found. Run `clanker-overleaf login` to sign in (a browser opens).",
     );
   }
 
@@ -207,7 +207,7 @@ export class SessionManager {
     const cookies = this.cookies();
     if (await validateCookies(this.config, cookies)) return cookies;
     throw new AuthError(
-      "The cached Overleaf session is invalid or expired. Run `claudeleaf login` again.",
+      "The cached Overleaf session is invalid or expired. Run `clanker-overleaf login` again.",
     );
   }
 }
