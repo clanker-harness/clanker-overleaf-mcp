@@ -62,6 +62,11 @@ export class OverleafClient {
     }
   }
 
+  /** Touch the session so Overleaf extends it; persists a rotated cookie. */
+  keepalive(): Promise<{ ok: boolean; rotated: boolean }> {
+    return this.sessions.keepalive();
+  }
+
   /** List every accessible project (cached; pass `refresh=false` to reuse the cache). */
   async listProjects(refresh = true): Promise<ProjectSummary[]> {
     if (refresh || this.projectList === null) {

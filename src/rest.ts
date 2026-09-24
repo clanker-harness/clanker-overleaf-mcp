@@ -7,7 +7,7 @@
 import { appendFileSync } from "node:fs";
 
 import type { Config } from "./config.js";
-import { cookieHeader, type SessionManager } from "./auth.js";
+import { absorbSetCookies, cookieHeader, type SessionManager } from "./auth.js";
 import { ClaudeleafError } from "./errors.js";
 import type { ProjectSummary } from "./types.js";
 import { sleep } from "./util.js";
@@ -217,6 +217,15 @@ export class RestClient {
     private readonly projectId: string,
   ) {}
 
+  /** Persist a rotated session cookie so the cached login keeps extending. */
+  private absorb(res: Response): void {
+    try {
+      absorbSetCookies(this.config, this.sessions.cookies(false), res);
+    } catch {
+      /* no session in memory: nothing to roll */
+    }
+  }
+
   private async cookieHdr(forceRefresh: boolean): Promise<string> {
     const cookies = forceRefresh ? await this.sessions.ensureValid() : this.sessions.cookies();
     return cookieHeader(cookies);
@@ -272,6 +281,7 @@ export class RestClient {
         continue;
       }
       last = res;
+      this.absorb(res);
       if (res.status === 200 || res.status === 204) {
         try {
           return await res.json();

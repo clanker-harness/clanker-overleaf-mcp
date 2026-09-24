@@ -18,6 +18,49 @@ import type { Cookies } from "./types.js";
 const RELEVANT_COOKIES = ["overleaf_session2", "deviceHistory"];
 const USER_ID_RE = /name="ol-user_id"\s+content="([^"]+)"/;
 
+/**
+ * Absorb rotated cookies from a response. Overleaf extends a session by
+ * re-issuing `overleaf_session2` on responses; a client that only ever sends
+ * the value captured at login lets the server-side session go idle and expire
+ * (live 2026-09-20: a Sep 6 login died in two weeks). Merge any relevant
+ * `Set-Cookie` values into `cookies` and persist them; returns true if anything
+ * changed. Never throws: a persistence hiccup must not fail the request.
+ */
+export function absorbSetCookies(config: Config, cookies: Cookies, res: Response): boolean {
+  let raw: string[] = [];
+  try {
+    const h = res.headers as Headers & { getSetCookie?: () => string[] };
+    raw = typeof h.getSetCookie === "function" ? h.getSetCookie() : [];
+    if (raw.length === 0) {
+      const one = res.headers.get("set-cookie");
+      if (one) raw = [one];
+    }
+  } catch {
+    return false;
+  }
+  let changed = false;
+  for (const line of raw) {
+    const first = line.split(";", 1)[0] ?? "";
+    const eq = first.indexOf("=");
+    if (eq <= 0) continue;
+    const name = first.slice(0, eq).trim();
+    const value = first.slice(eq + 1).trim();
+    if (!RELEVANT_COOKIES.includes(name) || !value) continue;
+    if (cookies[name] !== value) {
+      cookies[name] = value;
+      changed = true;
+    }
+  }
+  if (changed) {
+    try {
+      saveCookies(config, cookies);
+    } catch {
+      /* best effort: the in-memory copy is already fresh */
+    }
+  }
+  return changed;
+}
+
 export function cookieHeader(cookies: Cookies): string {
   return Object.entries(cookies)
     .map(([k, v]) => `${k}=${v}`)
@@ -64,7 +107,9 @@ export async function validateCookies(config: Config, cookies: Cookies): Promise
   }
   if (res.status !== 200) return false;
   const m = USER_ID_RE.exec(await res.text());
-  return Boolean(m && m[1]);
+  const ok = Boolean(m && m[1]);
+  if (ok) absorbSetCookies(config, cookies, res); // keep the session rolling
+  return ok;
 }
 
 function extractCookies(
@@ -200,6 +245,20 @@ export class SessionManager {
     saveCookies(this.config, cookies);
     this.cached = cookies;
     return cookies;
+  }
+
+  /**
+   * Keepalive: touch the dashboard with the cached session so Overleaf extends
+   * it, and persist any rotated cookie. Meant for a periodic job (launchd/cron),
+   * so a session that is not otherwise used still never goes idle.
+   */
+  async keepalive(): Promise<{ ok: boolean; rotated: boolean }> {
+    const cookies = this.cookies(true);
+    const before = cookies["overleaf_session2"];
+    const ok = await validateCookies(this.config, cookies);
+    const rotated = ok && cookies["overleaf_session2"] !== before;
+    if (ok) this.cached = cookies;
+    return { ok, rotated };
   }
 
   /** Return valid cookies, raising a clear error if a (re)login is needed. */

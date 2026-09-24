@@ -61,6 +61,7 @@ Usage: clanker-overleaf <command> [args]
 
   login                                   sign in via browser, cache the session
   doctor                                  check the session, list projects
+  keepalive                               touch the session so it never idles out (for launchd/cron)
   projects                                list all accessible projects
   new <name>                              create a new blank project
   info <project>                          project metadata
@@ -100,6 +101,18 @@ async function run(argv: string[]): Promise<number> {
     const cookies = await client.login();
     console.log(`Signed in. Session cached at ${config.sessionPath}`);
     console.log(`Cookies: ${Object.keys(cookies).join(", ")}`);
+    return 0;
+  }
+
+  if (command === "keepalive") {
+    const config = Config.fromEnv();
+    const client = new OverleafClient(config);
+    const r = await client.keepalive();
+    if (!r.ok) {
+      console.log("keepalive: session invalid or expired. Run `clanker-overleaf login`.");
+      return 1;
+    }
+    console.log(`keepalive: ok${r.rotated ? " (cookie rotated and saved)" : ""}`);
     return 0;
   }
 
